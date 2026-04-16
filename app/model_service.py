@@ -97,38 +97,34 @@ class HeartModelService:
         }
 
     def predict_bytes(self, audio_bytes: bytes):
-    if self.model is None:
-        raise ValueError("Modelo no entrenado")
+        if self.model is None:
+            raise ValueError("Modelo no entrenado")
 
-    signal, sr = clean_heart_audio_from_bytes(audio_bytes)
-    feats = extract_features(signal, sr).reshape(1, -1)
+        signal, sr = clean_heart_audio_from_bytes(audio_bytes)
+        feats = extract_features(signal, sr).reshape(1, -1)
 
-    # 🔥 Probabilidades
-    proba = self.model.predict_proba(feats)[0]
-    classes = list(self.model.classes_)
+        proba = self.model.predict_proba(feats)[0]
+        classes = list(self.model.classes_)
 
-    scores = {cls: float(p) for cls, p in zip(classes, proba)}
+        scores = {cls: float(p) for cls, p in zip(classes, proba)}
 
-    # 🔥 Probabilidad de anormal
-    prob_anormal = scores.get("anormal", 0.0)
+        prob_anormal = scores.get("anormal", 0.0)
+        UMBRAL = 0.4
 
-    # 🔥 UMBRAL CLÍNICO
-    UMBRAL = 0.4
+        if prob_anormal >= UMBRAL:
+            estado = "anormal"
+            confidence = prob_anormal
+        else:
+            estado = "normal"
+            confidence = scores.get("normal", 0.0)
 
-    if prob_anormal >= UMBRAL:
-        estado = "anormal"
-        confidence = prob_anormal
-    else:
-        estado = "normal"
-        confidence = scores.get("normal", 0.0)
-
-    return {
-        "estado": estado,
-        "precision": float(confidence),
-        "umbral": UMBRAL,
-        "scores": scores,
-        "limpieza": {
-            "sample_rate": sr,
-            "duration_seconds": round(len(signal) / sr, 4)
+        return {
+            "estado": estado,
+            "precision": float(confidence),
+            "umbral": UMBRAL,
+            "scores": scores,
+            "limpieza": {
+                "sample_rate": sr,
+                "duration_seconds": round(len(signal) / sr, 4)
+            }
         }
-    }
