@@ -109,7 +109,7 @@ class HeartModelService:
         scores = {cls: float(p) for cls, p in zip(classes, proba)}
 
         prob_anormal = scores.get("anormal", 0.0)
-        UMBRAL = 0.4
+        UMBRAL = 0.5
 
         if prob_anormal >= UMBRAL:
             estado = "anormal"
