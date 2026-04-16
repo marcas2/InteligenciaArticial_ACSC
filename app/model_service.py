@@ -126,11 +126,14 @@ class HeartModelService:
             confidence = scores.get("normal", 0.0)
 
         return {
-            "estado": estado,
-            "precision": float(confidence),
-            "scores": scores,
-            "limpieza": {
-                "sample_rate": sr,
-                "duration_seconds": round(len(signal) / sr, 4)
+                "estado": estado,
+                "precision": float(confidence),
+                "umbral_normal": UMBRAL_NORMAL,
+                "umbral_anormal": UMBRAL_ANORMAL,
+                "scores": scores,
+                "limpieza": {
+                    "sample_rate": sr,
+                    "duration_seconds": round(len(signal) / sr, 4)
+                }
             }
-        }
+        
