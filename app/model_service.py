@@ -102,12 +102,22 @@ class HeartModelService:
 
         signal, sr = clean_heart_audio_from_bytes(audio_bytes)
         feats = extract_features(signal, sr).reshape(1, -1)
-
-        pred = self.model.predict(feats)[0]
         proba = self.model.predict_proba(feats)[0]
         classes = list(self.model.classes_)
+
         scores = {cls: float(p) for cls, p in zip(classes, proba)}
-        confidence = float(scores[pred])
+
+        prob_anormal = scores.get("anormal", 0.0)
+
+        # 🔥 UMBRAL CLÍNICO (ajústalo)
+        UMBRAL = 0.4
+
+        if prob_anormal >= UMBRAL:
+            estado = "anormal"
+        else:
+            estado = "normal"
+
+        confidence = float(prob_anormal if estado == "anormal" else scores.get("normal", 0.0))
 
         return {
             "estado": pred,
