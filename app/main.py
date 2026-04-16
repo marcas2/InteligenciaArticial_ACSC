@@ -43,12 +43,12 @@ async def predict(
         result = service.predict_bytes(audio_bytes)
 
         return {
-            "status": "ok",
-            "archivo_audio": audio.filename,
-            "archivo_metadata": metadata_file.filename,
-            "metadata_recibida": metadata,
-            **result
-        }
+                "estado": result["estado"],
+                "precision": result["precision"],
+                "umbral": result["umbral"],
+                "scores": result["scores"],
+                "limpieza": result["limpieza"]
+            }
     except HTTPException:
         raise
     except Exception as e:
