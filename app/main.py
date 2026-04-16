@@ -1,9 +1,10 @@
 import json
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from .model_service import HeartModelService
 
 app = FastAPI(title="Heart Anomaly API", version="1.0.0")
 service = HeartModelService()
+
 
 
 @app.get("/health")
@@ -26,12 +27,13 @@ def retrain():
 @app.post("/predict")
 async def predict(
     audio: UploadFile = File(...),
-    metadata_json: str = Form(...)
+    metadata_file: UploadFile = File(...)
 ):
     try:
-        metadata = json.loads(metadata_json)
-    except Exception:
-        raise HTTPException(status_code=400, detail="metadata_json inválido")
+        metadata_bytes = await metadata_file.read()
+        metadata = json.loads(metadata_bytes.decode("utf-8"))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"JSON inválido: {str(e)}")
 
     try:
         audio_bytes = await audio.read()
@@ -42,7 +44,8 @@ async def predict(
 
         return {
             "status": "ok",
-            "archivo": audio.filename,
+            "archivo_audio": audio.filename,
+            "archivo_metadata": metadata_file.filename,
             "metadata_recibida": metadata,
             **result
         }
