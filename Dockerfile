@@ -1,11 +1,8 @@
 FROM python:3.11-slim
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
-
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y \
     ffmpeg \
     libsndfile1 \
     build-essential \
@@ -15,8 +12,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
-COPY model_data ./model_data
 
-EXPOSE 5004
+RUN mkdir -p /app/model /tmp/audio
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "5004"]
+EXPOSE 3004
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "3004"]

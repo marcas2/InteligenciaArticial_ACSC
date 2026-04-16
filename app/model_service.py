@@ -1,148 +1,120 @@
-from __future__ import annotations
-
-import json
 from pathlib import Path
-from typing import Dict, List, Tuple
-
-import joblib
 import numpy as np
-import pandas as pd
+import joblib
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.impute import SimpleImputer
-from sklearn.metrics import accuracy_score, classification_report
-from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+from sklearn.model_selection import train_test_split
 
-from .audio_utils import clean_heart_audio, extract_features
+from .audio_utils import clean_heart_audio_from_bytes, extract_features
+from .remote_dataset import get_remote_training_urls, download_audio
 
 
-class HeartSoundModelService:
-    def __init__(self, base_data_dir: str | Path = "/data/Sonidos", model_dir: str | Path = "/app/model_data") -> None:
-        self.base_data_dir = Path(base_data_dir)
-        self.model_dir = Path(model_dir)
-        self.model_dir.mkdir(parents=True, exist_ok=True)
-        self.model_path = self.model_dir / "heart_anomaly_model.joblib"
-        self.meta_path = self.model_dir / "heart_anomaly_model_meta.json"
-        self.pipeline: Pipeline | None = None
-        self.feature_columns: List[str] = []
-        self.metadata: Dict[str, object] = {}
+MODEL_PATH = Path("/app/model/model.joblib")
 
-    def train(self) -> Dict[str, object]:
-        rows: List[Dict[str, float]] = []
-        labels: List[str] = []
-        processed_files: List[str] = []
-        skipped_files: List[Tuple[str, str]] = []
 
-        folders = {
-            "normal": self.base_data_dir / "Audios" / "normal",
-            "anormal": self.base_data_dir / "Audios" / "anormal",
-        }
+class HeartModelService:
+    def __init__(self):
+        self.model = None
+        if MODEL_PATH.exists():
+            self.model = joblib.load(MODEL_PATH)
 
-        for label, folder in folders.items():
-            if not folder.exists():
-                continue
-            for wav_path in sorted(folder.glob("*.wav")):
-                try:
-                    signal, sr = clean_heart_audio(wav_path)
-                    feats = extract_features(signal, sr)
-                    rows.append(feats)
-                    labels.append(label)
-                    processed_files.append(str(wav_path))
-                except Exception as exc:
-                    skipped_files.append((str(wav_path), str(exc)))
+    def train_from_remote(self):
+        normal_urls, anormal_urls = get_remote_training_urls()
 
-        if len(rows) < 6:
-            raise RuntimeError(
-                "No hay suficientes audios válidos para entrenar. Se requieren al menos 6 entre normal y anormal."
-            )
+        if not normal_urls or not anormal_urls:
+            raise ValueError("No hay suficientes audios remotos en normal y anormal")
 
-        unique_labels = sorted(set(labels))
-        if len(unique_labels) < 2:
-            raise RuntimeError("Se requieren ambas clases: normal y anormal.")
+        X = []
+        y = []
+        errores = []
 
-        X = pd.DataFrame(rows)
-        y = np.array(labels)
-        self.feature_columns = list(X.columns)
+        for url in normal_urls:
+            try:
+                audio_bytes = download_audio(url)
+                signal, sr = clean_heart_audio_from_bytes(audio_bytes)
+                feats = extract_features(signal, sr)
+                X.append(feats)
+                y.append("normal")
+            except Exception as e:
+                errores.append({"url": url, "error": str(e)})
 
-        stratify = y if min(np.unique(y, return_counts=True)[1]) >= 2 else None
+        for url in anormal_urls:
+            try:
+                audio_bytes = download_audio(url)
+                signal, sr = clean_heart_audio_from_bytes(audio_bytes)
+                feats = extract_features(signal, sr)
+                X.append(feats)
+                y.append("anormal")
+            except Exception as e:
+                errores.append({"url": url, "error": str(e)})
+
+        if len(X) < 4:
+            raise ValueError("Muy pocos audios válidos para entrenar")
+
+        X = np.array(X, dtype=np.float32)
+        y = np.array(y)
+
+        stratify = y if len(set(y)) > 1 else None
         X_train, X_test, y_train, y_test = train_test_split(
-            X,
-            y,
-            test_size=0.25,
-            random_state=42,
-            stratify=stratify,
+            X, y, test_size=0.25, random_state=42, stratify=stratify
         )
 
-        pipeline = Pipeline(
-            steps=[
-                ("imputer", SimpleImputer(strategy="median")),
-                ("scaler", StandardScaler()),
-                (
-                    "clf",
-                    RandomForestClassifier(
-                        n_estimators=300,
-                        max_depth=16,
-                        min_samples_leaf=2,
-                        random_state=42,
-                        class_weight="balanced",
-                        n_jobs=-1,
-                    ),
-                ),
-            ]
-        )
+        pipeline = Pipeline([
+            ("scaler", StandardScaler()),
+            ("clf", RandomForestClassifier(
+                n_estimators=300,
+                random_state=42,
+                class_weight="balanced"
+            ))
+        ])
+
         pipeline.fit(X_train, y_train)
-        y_pred = pipeline.predict(X_test)
-        accuracy = float(accuracy_score(y_test, y_pred))
-        report = classification_report(y_test, y_pred, output_dict=True, zero_division=0)
+        preds = pipeline.predict(X_test)
 
-        joblib.dump({"pipeline": pipeline, "feature_columns": self.feature_columns}, self.model_path)
-        self.metadata = {
-            "accuracy_holdout": accuracy,
-            "report": report,
-            "train_size": int(len(X_train)),
-            "test_size": int(len(X_test)),
-            "processed_files": len(processed_files),
-            "skipped_files": skipped_files,
-            "labels": unique_labels,
+        acc = float(accuracy_score(y_test, preds))
+        report = classification_report(y_test, preds, output_dict=True, zero_division=0)
+        matrix = confusion_matrix(y_test, preds, labels=["anormal", "normal"]).tolist()
+
+        MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+        joblib.dump(pipeline, MODEL_PATH)
+        self.model = pipeline
+
+        return {
+            "status": "ok",
+            "dataset": {
+                "total": int(len(X)),
+                "normal": int((y == "normal").sum()),
+                "anormal": int((y == "anormal").sum())
+            },
+            "metricas": {
+                "accuracy": acc,
+                "classification_report": report,
+                "confusion_matrix": matrix
+            },
+            "errores_descarga_o_proceso": errores
         }
-        self.meta_path.write_text(json.dumps(self.metadata, indent=2, ensure_ascii=False), encoding="utf-8")
 
-        self.pipeline = pipeline
-        return self.metadata
+    def predict_bytes(self, audio_bytes: bytes):
+        if self.model is None:
+            raise ValueError("Modelo no entrenado")
 
-    def load_or_train(self) -> Dict[str, object]:
-        if self.model_path.exists():
-            data = joblib.load(self.model_path)
-            self.pipeline = data["pipeline"]
-            self.feature_columns = list(data["feature_columns"])
-            if self.meta_path.exists():
-                self.metadata = json.loads(self.meta_path.read_text(encoding="utf-8"))
-            return self.metadata
-        return self.train()
+        signal, sr = clean_heart_audio_from_bytes(audio_bytes)
+        feats = extract_features(signal, sr).reshape(1, -1)
 
-    def predict_file(self, audio_path: str | Path) -> Dict[str, object]:
-        if self.pipeline is None:
-            self.load_or_train()
-        if self.pipeline is None:
-            raise RuntimeError("El modelo no está cargado")
-
-        signal, sr = clean_heart_audio(audio_path)
-        feats = extract_features(signal, sr)
-        row = pd.DataFrame([feats])
-        row = row.reindex(columns=self.feature_columns, fill_value=0.0)
-        pred = self.pipeline.predict(row)[0]
-        proba = self.pipeline.predict_proba(row)[0]
-        classes = list(self.pipeline.named_steps["clf"].classes_)
-        class_scores = {label: float(score) for label, score in zip(classes, proba)}
-        confidence = float(np.max(proba))
+        pred = self.model.predict(feats)[0]
+        proba = self.model.predict_proba(feats)[0]
+        classes = list(self.model.classes_)
+        scores = {cls: float(p) for cls, p in zip(classes, proba)}
+        confidence = float(scores[pred])
 
         return {
             "estado": pred,
-            "precision": round(confidence, 6),
-            "scores": class_scores,
+            "precision": confidence,
+            "scores": scores,
             "limpieza": {
                 "sample_rate": sr,
-                "duration_seconds": round(len(signal) / sr, 3),
-            },
+                "duration_seconds": round(len(signal) / sr, 4)
+            }
         }

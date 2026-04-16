@@ -2,12 +2,10 @@ services:
   heart-anomaly-api:
     build: .
     container_name: heart-anomaly-api
-    restart: always
     ports:
-      - "5004:5004"
-    environment:
-      DATASET_BASE_DIR: /data/Sonidos
-      MODEL_DIR: /app/model_data
+      - "3004:3004"
+    restart: always
+    tmpfs:
+      - /tmp
     volumes:
-      - /home/Sonidos:/data/Sonidos:ro
-      - ./model_data:/app/model_data
+      - ./model_data:/app/model
