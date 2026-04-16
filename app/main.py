@@ -45,7 +45,6 @@ async def predict(
         return {
                 "estado": result["estado"],
                 "precision": result["precision"],
-                "umbral": result["umbral"],
                 "scores": result["scores"],
                 "limpieza": result["limpieza"]
             }
