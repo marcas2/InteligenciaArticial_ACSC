@@ -128,7 +128,6 @@ class HeartModelService:
         return {
             "estado": estado,
             "precision": float(confidence),
-            "umbral": UMBRAL,
             "scores": scores,
             "limpieza": {
                 "sample_rate": sr,
