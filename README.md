@@ -44,19 +44,19 @@ docker compose logs -f
 Probar salud:
 
 ```bash
-curl http://127.0.0.1:5004/health
+curl http://127.0.0.1:3004/health
 ```
 
 ## Reentrenar
 
 ```bash
-curl -X POST http://127.0.0.1:5004/retrain
+curl -X POST http://127.0.0.1:3004/retrain
 ```
 
 ## Predicción
 
 ```bash
-curl -X POST "http://127.0.0.1:5004/predict" \
+curl -X POST "http://127.0.0.1:3004/predict" \
   -F 'audio=@/ruta/audio.wav' \
   -F 'metadata_json={"paciente":"123","origen":"prueba"}'
 ```
