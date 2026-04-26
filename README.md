@@ -17,7 +17,7 @@ No usa `ECG`, `ECG_1`, `ECG_2` ni JSON de entrenamiento.
    - normalización
 3. Extrae características acústicas.
 4. Entrena un clasificador supervisado.
-5. Expone una API en puerto `5004`.
+5. Expone una API en puerto `3004`.
 6. En predicción recibe `audio` + `metadata_json`, analiza, responde JSON y borra el temporal.
 
 ## Estructura
